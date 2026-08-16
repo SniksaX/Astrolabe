@@ -1,0 +1,46 @@
+{
+  "name": "@astrolabe/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "worker": "tsx watch src/worker.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/server.js",
+    "start:worker": "node dist/worker.js",
+    "test": "vitest run --passWithNoTests",
+    "seed:dev-user": "tsx --env-file=../../.env src/scripts/seedDevUser.ts"
+  },
+  "dependencies": {
+    "@astrolabe/config-core": "*",
+    "@astrolabe/db-core": "*",
+    "@astrolabe/inference": "*",
+    "@astrolabe/shared-types": "*",
+    "@mozilla/readability": "^0.5.0",
+    "argon2": "^0.41.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "jsonwebtoken": "^9.0.2",
+    "linkedom": "^0.18.13",
+    "mammoth": "^1.12.1",
+    "multer": "^2.0.1",
+    "pdfjs-dist": "^4.10.38",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^22.9.0",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  }
+}
