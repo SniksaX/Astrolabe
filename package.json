@@ -1,0 +1,26 @@
+{
+  "name": "astrolabe",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build:packages": "npm run build -w packages/shared-types -w packages/db-core -w packages/config-core -w packages/inference",
+    "build": "npm run build:packages && npm run build -w apps/api -w apps/web",
+    "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "migrate": "tsx --env-file=.env packages/db-core/src/migrate.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  },
+  "allowScripts": {
+    "argon2@0.41.1": true,
+    "esbuild@0.28.2": true,
+    "esbuild@0.21.5": true,
+    "sharp@0.34.5": true
+  }
+}
