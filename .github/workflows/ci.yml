@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build packages partagés
+        run: npm run build:packages
+
+      - name: Typecheck (monorepo)
+        run: npm run typecheck
+
+      - name: Build (api + web)
+        run: npm run build
+
+      - name: Tests unitaires (Vitest)
+        run: npm run test
+
+      - name: Installer Chromium (Playwright)
+        run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+
+      # Charte §10 : les ratios de contraste sont vérifiés dans le document ;
+      # axe-core vérifie ici leur emploi réel dans le DOM rendu (parcours
+      # public + coquille authentifiée, cookie de présence simulé — cf.
+      # apps/web/e2e/a11y.spec.ts). Preuve automatisée pour le dossier de la
+      # classe de bug documentée dans docs/journal.md (2026-08-14).
+      - name: Audit accessibilité (axe-core)
+        run: npm run test:a11y
+        working-directory: apps/web
+
+      - name: Rapport Playwright (en cas d'échec)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7
