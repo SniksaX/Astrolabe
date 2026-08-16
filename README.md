@@ -1,8 +1,8 @@
 # Astrolabe
 
-**Astrolabe** is a personal document assistant. You bring a source — PDF, DOCX, web page, or YouTube video — ask questions about it, and get answers with **citations that point to the exact passage**.
+**Astrolabe** is a personal document assistant. You bring a source (PDF, DOCX, web page, or YouTube video), ask questions about it, and get answers with **citations that point to the exact passage**.
 
-This repository is a thesis project for the **RNCP 38606** certification (French vocational degree). The product name is **Astrolabe**— including the local Postgres role, password, database, and Docker volume.
+This repository is a thesis project for the **RNCP 38606** certification (French vocational degree). The product name is **Astrolabe**, including the local Postgres role, password, database, and Docker volume.
 
 ---
 
@@ -34,7 +34,7 @@ This repository is a thesis project for the **RNCP 38606** certification (French
 | Q&A with citations | Answers grounded in retrieved chunks, with citations to the source passage |
 | Auth & sessions | Signup / login, HttpOnly cookies, access JWT + rotating refresh tokens, lockout |
 | Dashboard shell | Authenticated UI: sidebar, status bar, mobile nav, chat empty state, sources screens |
-| Configurable LLM | OpenAI-compatible provider — local in dev, EU-hosted in production |
+| Configurable LLM | OpenAI-compatible provider: local in dev, EU-hosted in production |
 | Planned | Voice interaction, freemium multi-account via Stripe, RGPD export/delete |
 
 ---
@@ -60,7 +60,7 @@ Monorepo (`npm` workspaces). A single Express API process, organized as modules.
 
 | Piece | Role |
 | --- | --- |
-| `apps/web` | Next.js App Router — marketing (SSG), auth pages, dashboard shell |
+| `apps/web` | Next.js App Router: marketing (SSG), auth pages, dashboard shell |
 | `apps/api` | Express HTTP (`server.ts`) + ingestion worker (`worker.ts`) |
 | `packages/shared-types` | Cross-boundary types (`Chunk`, `Citation`, `Document`, `ChatRequest`, …) |
 | `packages/config-core` | Fail-fast env helpers (`requireEnv`, `requireSecret`, …) |
@@ -261,8 +261,8 @@ All provider I/O goes through `packages/inference`:
 | Method | Behaviour |
 | --- | --- |
 | `embed` | Fail-closed (throws) |
-| `score` | Rerank / LLM-judge — fail-open (`null` on error) |
-| `stream` | Chat generation — mid-stream failures yield `{ kind: 'error' }` |
+| `score` | Rerank / LLM-judge, fail-open (`null` on error) |
+| `stream` | Chat generation: mid-stream failures yield `{ kind: 'error' }` |
 | `transcribe` | Voice stub (milestone J4) |
 
 ---
@@ -283,7 +283,7 @@ All provider I/O goes through `packages/inference`:
 
 ## Project status & milestones
 
-### Current (J2 — socle)
+### Current (J2, socle)
 
 **Real:** auth end-to-end, dashboard shell, `/` / `/login` / `/inscription`, chat empty state, ingestion extractors + chunker, `packages/inference`, CI with a11y gate.
 
@@ -314,4 +314,4 @@ All provider I/O goes through `packages/inference`:
 
 ## License
 
-Private thesis project — not licensed for public redistribution.
+Private thesis project, not licensed for public redistribution.
