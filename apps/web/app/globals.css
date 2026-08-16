@@ -1,0 +1,164 @@
+@import "tailwindcss";
+@import "./tokens.css";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/*
+ * Correspondance entre les slots sémantiques attendus par shadcn/ui (utilisés
+ * dans le code des composants générés : bg-background, bg-primary, etc.) et
+ * les tokens de la charte (docs/charte-visuelle.md §2). Aucune couleur n'est
+ * introduite ici : chaque slot pointe vers un token déjà défini dans
+ * tokens.css.
+ *
+ * Le slot shadcn « accent » (fond de survol discret des menus, distinct de
+ * l'accent de marque) n'est PAS repris ici : aucun composant installé ne le
+ * consomme (`grep accent components/ui` est vide), et lui donner le même nom
+ * Tailwind que le token `accent` de la charte (#1F3A5F) écraserait ce
+ * dernier par collision de variable CSS — bug constaté à l'usage (`--primary`
+ * et l'anneau de focus héritaient silencieusement de la couleur `selected`).
+ * Le hover des éléments de navigation utilise directement `bg-selected`
+ * (voir `components/shell/sidebar-nav.tsx`) plutôt que cette indirection.
+ *
+ * Mode sombre : demandé explicitement par le porteur de projet (2026-08-15),
+ * alors que la charte §9 le classait hors périmètre v1 — addendum dans la
+ * charte. Activé via la classe `.dark` sur <html> (préférence light/dark/
+ * system, stockage local). Variante Tailwind :
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: var(--color-canvas);
+  --foreground: var(--color-ink);
+
+  --card: var(--color-surface);
+  --card-foreground: var(--color-ink);
+  --popover: var(--color-surface);
+  --popover-foreground: var(--color-ink);
+
+  --primary: var(--color-accent);
+  --primary-foreground: #ffffff;
+
+  --secondary: var(--color-surface);
+  --secondary-foreground: var(--color-ink);
+
+  --muted: var(--color-canvas);
+  --muted-foreground: var(--color-slate);
+
+  --destructive: var(--color-danger);
+  --destructive-foreground: #ffffff;
+
+  --border: var(--color-line);
+  --input: var(--color-line);
+  --ring: var(--color-accent);
+
+  /*
+   * §5 — rayon dominant (boutons, cartes, panneaux). Sert de base aux
+   * composants shadcn ; ne redéfinit PAS --radius-xs/sm/md/full, déjà fixés
+   * dans tokens.css avec leur sens propre à la charte (le rayon "md", 8 px,
+   * est réservé aux bulles de conversation et n'est pas le rayon par défaut
+   * des boutons/panneaux — voir §5).
+   */
+  --radius: var(--radius-sm);
+
+  /* Anneau intérieur de focus (§6) — blanc en clair, canevas en sombre. */
+  --focus-inner: #ffffff;
+}
+
+/*
+ * Palette sombre : mêmes rôles sémantiques que la charte §2, valeurs
+ * assombries/éclaircies pour viser AA sur canevas #0f1216 / surface #1a1e24.
+ * L'accent clair (#8fa8c8) remplace #1F3A5F en sombre — sinon les liens et
+ * l'anneau de focus disparaîtraient sur fond sombre.
+ */
+.dark {
+  --color-ink: #e8eaed;
+  --color-slate: #a3abb4;
+  --color-line: #6b7280;
+  --color-accent: #8fa8c8;
+  --color-accent-hover: #b0c4db;
+  --color-success: #6fbf8a;
+  --color-warning: #d4b06a;
+  --color-danger: #e09490;
+  --color-canvas: #0f1216;
+  --color-surface: #1a1e24;
+  --color-selected: #243044;
+  --color-warning-bg: #2a2418;
+  --focus-inner: #0f1216;
+  --primary-foreground: #0f1216;
+  --destructive-foreground: #0f1216;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
+}
+
+/*
+ * §6 — Anneau double décalé, exclusivement au clavier (:focus-visible).
+ * L'anneau intérieur blanc sépare l'anneau d'accent du fond, y compris sur
+ * les fonds déjà accentués (boutons primaires, éléments sélectionnés).
+ */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--focus-inner);
+  border-radius: var(--radius-xs);
+}
+
+/* §7 — Mouvement neutralisé sur demande système. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+}
+
+/* Lien d'évitement : hors écran jusqu'au focus clavier, standard WCAG 2.4.1. */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 8px;
+  z-index: 100;
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+  padding: 8px 12px;
+  border-radius: var(--radius-xs);
+  font-size: var(--text-caption);
+}
+
+.skip-link:focus-visible {
+  top: 8px;
+}
