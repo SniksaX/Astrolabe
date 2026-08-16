@@ -3,18 +3,18 @@ services:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
-      POSTGRES_USER: astrolab
-      POSTGRES_PASSWORD: astrolab
-      POSTGRES_DB: astrolab
+      POSTGRES_USER: astrolabe
+      POSTGRES_PASSWORD: astrolabe
+      POSTGRES_DB: astrolabe
     ports:
       - "5433:5432"
     volumes:
-      - astrolab_pg_data:/var/lib/postgresql/data
+      - astrolabe_pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U astrolab"]
+      test: ["CMD-SHELL", "pg_isready -U astrolabe"]
       interval: 5s
       timeout: 3s
       retries: 10
 
 volumes:
-  astrolab_pg_data:
+  astrolabe_pg_data:
