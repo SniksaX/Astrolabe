@@ -1,8 +1,8 @@
 # Astrolabe
 
-**Astrolabe** is a personal document assistant. You bring a source — PDF, DOCX, web page, or YouTube video — ask questions about it, and get answers with **citations that point to the exact passage**, never an unsourced claim.
+**Astrolabe** is a personal document assistant. You bring a source — PDF, DOCX, web page, or YouTube video — ask questions about it, and get answers with **citations that point to the exact passage**.
 
-This repository is a thesis project for the **RNCP 38606** certification (French vocational degree). The product name is **Astrolabe** (with an *e*); some local infra identifiers still say `astrolab` on purpose (Postgres role/db in Docker) and should not be renamed casually.
+This repository is a thesis project for the **RNCP 38606** certification (French vocational degree). The product name is **Astrolabe**— including the local Postgres role, password, database, and Docker volume.
 
 ---
 
@@ -31,7 +31,7 @@ This repository is a thesis project for the **RNCP 38606** certification (French
 | Capability | Description |
 | --- | --- |
 | Multi-format sources | PDF, DOCX, HTML/web pages, YouTube (extractors live under ingestion) |
-| Q&A with citations | Answers grounded in retrieved chunks; citations are first-class, not decoration |
+| Q&A with citations | Answers grounded in retrieved chunks, with citations to the source passage |
 | Auth & sessions | Signup / login, HttpOnly cookies, access JWT + rotating refresh tokens, lockout |
 | Dashboard shell | Authenticated UI: sidebar, status bar, mobile nav, chat empty state, sources screens |
 | Configurable LLM | OpenAI-compatible provider — local in dev, EU-hosted in production |
@@ -41,7 +41,7 @@ This repository is a thesis project for the **RNCP 38606** certification (French
 
 ## Architecture
 
-Monorepo (`npm` workspaces). **One API process, modules not microservices** — each module exposes a public `index.ts`; cross-module imports go through that surface only.
+Monorepo (`npm` workspaces). A single Express API process, organized as modules. Each module exposes a public `index.ts`; cross-module imports go through that surface only.
 
 ```text
 ┌─────────────┐     cookie session      ┌──────────────────────────────┐
@@ -65,7 +65,7 @@ Monorepo (`npm` workspaces). **One API process, modules not microservices** — 
 | `packages/shared-types` | Cross-boundary types (`Chunk`, `Citation`, `Document`, `ChatRequest`, …) |
 | `packages/config-core` | Fail-fast env helpers (`requireEnv`, `requireSecret`, …) |
 | `packages/db-core` | `pg` pool, migration runner, `withUserScope` / `withReadOnlyUserScope` |
-| `packages/inference` | **Only** place that talks to the LLM provider |
+| `packages/inference` | LLM provider client (`embed`, `score`, `stream`, `transcribe`) |
 | `infra/migrations` | Ordered SQL migrations (filename-tracked, applied once) |
 
 ---
@@ -169,7 +169,7 @@ Copy from [`.env.example`](.env.example). Summary:
 | `UPLOAD_DIR` | Local upload storage for PDF/DOCX bytes |
 | `NEXT_PUBLIC_API_URL` | Browser → API base URL |
 
-Never commit `.env`. The Docker DB name/user/password remain `astrolab` (no *e*) by deliberate choice.
+Never commit `.env`. Local Postgres credentials are `astrolabe` / `astrolabe` / database `astrolabe` (see `docker-compose.yml`).
 
 ---
 
@@ -233,8 +233,8 @@ Auth for protected routes: JWT from session cookie, validated by `requireJwt`.
 | Route | Audience |
 | --- | --- |
 | `/` | Public landing (marketing) |
-| `/login` | Login (no dashboard chrome) |
-| `/inscription` | Signup (no dashboard chrome) |
+| `/login` | Login |
+| `/inscription` | Signup |
 | `/chat`, `/chat/[…conversationId]` | Authenticated chat (empty state built; full chat later) |
 | `/sources`, `/sources/ajouter` | Document library / add source |
 | `/offre` | Offer / billing placeholder |
@@ -247,7 +247,7 @@ Dashboard routes sit behind Next.js middleware that expects a session cookie.
 ## Data & security model
 
 - **Postgres 16 + pgvector** via `docker-compose.yml` (host port `5433`).
-- **Migrations** live under `infra/migrations/`, applied once by filename. **Never edit an already-applied migration** — add a new file.
+- **Migrations** live under `infra/migrations/`, applied once by filename. After apply, changes go in a new migration file.
 - **RLS** is enabled and forced on user-owned tables. Policies compare `owner_id` (or `user_id` on `private_embedding_cache`) to `current_setting('app.user_id', true)`. Missing scope fails closed.
 - **Passwords**: Argon2id. **Tokens**: HS256 JWT access + rotating refresh (see project ADRs in local `docs/`).
 - **CORS**: exact `WEB_ORIGIN` + `credentials: true` so cookies work across `:3000` / `:4000`.
@@ -262,12 +262,11 @@ All provider I/O goes through `packages/inference`:
 | --- | --- |
 | `embed` | Fail-closed (throws) |
 | `score` | Rerank / LLM-judge — fail-open (`null` on error) |
-| `stream` | Chat generation — yields `{ kind: 'error' }` instead of throwing mid-stream |
+| `stream` | Chat generation — mid-stream failures yield `{ kind: 'error' }` |
 | `transcribe` | Voice stub (milestone J4) |
 
-Do not add a second HTTP client for embeddings, chat, or reranking elsewhere.
-
 ---
+
 
 ## CI
 
@@ -305,11 +304,11 @@ Do not add a second HTTP client for embeddings, chat, or reranking elsewhere.
 
 ## Development conventions
 
-- **Typed stubs, not TODOs** — unfinished logic throws `notImplemented('Class.method')`.
-- **Fail-open vs fail-closed** is per-operation (embeddings/auth fail closed; rerank/decomposition may degrade).
-- **Chunk sizing uses character budgets**, not tokenizer token counts (open-weight providers ≠ tiktoken).
-- **CSS**: Tailwind v4, CSS-first tokens in `apps/web/app/tokens.css` (charte visuelle).
-- **Module boundaries**: import sibling modules only via their `index.ts`.
+- Unfinished logic throws `notImplemented('Class.method')`.
+- Fail behaviour is per-operation: embeddings and auth throw; rerank and query decomposition can degrade quietly.
+- Chunk sizing uses character budgets (open-weight tokenizers vary).
+- CSS: Tailwind v4, design tokens in `apps/web/app/tokens.css`.
+- Import sibling modules via their `index.ts`.
 
 ---
 
