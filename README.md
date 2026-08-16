@@ -1,74 +1,318 @@
 # Astrolabe
 
-Personal document assistant: paste a PDF, DOCX, web page, or YouTube video, then ask questions with **citations that point to the exact source passage**.
+**Astrolabe** is a personal document assistant. You bring a source — PDF, DOCX, web page, or YouTube video — ask questions about it, and get answers with **citations that point to the exact passage**, never an unsourced claim.
 
-Thesis project (RNCP 38606). Monorepo — one Express API process (modules, not microservices), a Next.js web app, Postgres + pgvector, and an OpenAI-compatible inference provider.
+This repository is a thesis project for the **RNCP 38606** certification (French vocational degree). The product name is **Astrolabe** (with an *e*); some local infra identifiers still say `astrolab` on purpose (Postgres role/db in Docker) and should not be renamed casually.
 
-## Stack
+---
 
-| Layer | Tech |
+## Table of contents
+
+- [What it does](#what-it-does)
+- [Architecture](#architecture)
+- [Repository layout](#repository-layout)
+- [Prerequisites](#prerequisites)
+- [Quick start](#quick-start)
+- [Environment variables](#environment-variables)
+- [Scripts](#scripts)
+- [API surface](#api-surface)
+- [Web routes](#web-routes)
+- [Data & security model](#data--security-model)
+- [Inference](#inference)
+- [CI](#ci)
+- [Project status & milestones](#project-status--milestones)
+- [Development conventions](#development-conventions)
+- [License](#license)
+
+---
+
+## What it does
+
+| Capability | Description |
 | --- | --- |
-| Web | Next.js (App Router), Tailwind CSS v4, shadcn/ui |
-| API | Express, TypeScript — modules `auth`, `ingestion`, `retrieval`, `generation` |
-| Data | Postgres 16 + pgvector, row-level security (`owner_id`) |
-| Inference | OpenAI-compatible client in `packages/inference` (`embed`, `score`, `stream`, `transcribe`) |
+| Multi-format sources | PDF, DOCX, HTML/web pages, YouTube (extractors live under ingestion) |
+| Q&A with citations | Answers grounded in retrieved chunks; citations are first-class, not decoration |
+| Auth & sessions | Signup / login, HttpOnly cookies, access JWT + rotating refresh tokens, lockout |
+| Dashboard shell | Authenticated UI: sidebar, status bar, mobile nav, chat empty state, sources screens |
+| Configurable LLM | OpenAI-compatible provider — local in dev, EU-hosted in production |
+| Planned | Voice interaction, freemium multi-account via Stripe, RGPD export/delete |
+
+---
+
+## Architecture
+
+Monorepo (`npm` workspaces). **One API process, modules not microservices** — each module exposes a public `index.ts`; cross-module imports go through that surface only.
+
+```text
+┌─────────────┐     cookie session      ┌──────────────────────────────┐
+│  apps/web   │ ───────────────────────►│  apps/api (Express)          │
+│  Next.js    │◄───────────────────────│  auth · ingestion · retrieval │
+│  :3000      │     JSON / SSE          │  generation · conversations  │
+└─────────────┘                         │  + worker.ts (ingest poller) │
+                                        └──────────────┬───────────────┘
+                                                       │
+                         ┌─────────────────────────────┼─────────────────────────────┐
+                         ▼                             ▼                             ▼
+              packages/db-core              packages/inference                 Postgres 16
+              pool · migrate · RLS          embed · score · stream ·           + pgvector
+                                            transcribe                         :5433
+```
+
+| Piece | Role |
+| --- | --- |
+| `apps/web` | Next.js App Router — marketing (SSG), auth pages, dashboard shell |
+| `apps/api` | Express HTTP (`server.ts`) + ingestion worker (`worker.ts`) |
+| `packages/shared-types` | Cross-boundary types (`Chunk`, `Citation`, `Document`, `ChatRequest`, …) |
+| `packages/config-core` | Fail-fast env helpers (`requireEnv`, `requireSecret`, …) |
+| `packages/db-core` | `pg` pool, migration runner, `withUserScope` / `withReadOnlyUserScope` |
+| `packages/inference` | **Only** place that talks to the LLM provider |
+| `infra/migrations` | Ordered SQL migrations (filename-tracked, applied once) |
+
+---
 
 ## Repository layout
 
+```text
+Astrolabe/
+├── apps/
+│   ├── api/                 Express API + worker
+│   │   └── src/modules/     auth, conversations, generation, ingestion, retrieval
+│   └── web/                 Next.js UI
+│       ├── app/             (marketing), (dashboard), login, inscription
+│       └── components/      shell, chat, ui (shadcn)
+├── packages/
+│   ├── shared-types/
+│   ├── config-core/
+│   ├── db-core/
+│   └── inference/
+├── infra/migrations/        000 → 090_rls (extensions, auth, ingestion, chat, RLS)
+├── .github/workflows/       CI (typecheck, build, Vitest, axe-core)
+├── docker-compose.yml       Postgres + pgvector
+├── .env.example             Blueprint for local `.env`
+└── package.json             Workspaces + root scripts
 ```
-apps/web          Next.js UI (marketing, auth, dashboard shell)
-apps/api          Express HTTP server + ingestion worker
-packages/         shared-types, config-core, db-core, inference
-infra/migrations  SQL migrations (applied once, never edited after apply)
-```
+
+Local-only (gitignored): `docs/` (journal, ADRs, wireframes, MPD), `.env`, `.data/`, `node_modules/`, build outputs.
+
+---
 
 ## Prerequisites
 
-- Node.js 22+ and npm
-- Docker (local Postgres)
-- An OpenAI-compatible inference endpoint (embeddings + chat), when testing AI features
+- **Node.js 22+** and **npm**
+- **Docker** / Docker Compose (Postgres + pgvector)
+- An **OpenAI-compatible** inference stack when exercising AI paths:
+  - embeddings (`/v1/embeddings`)
+  - chat completions (generation)
+  - optional TEI `/rerank` or judge model (ADR 0004)
+
+---
 
 ## Quick start
 
 ```bash
-# 1. Install
+# 1. Clone & install
+git clone git@github.com:SniksaX/Astrolabe.git
+cd Astrolabe
 npm install
 
 # 2. Environment
 cp .env.example .env
-# Fill JWT_SECRET and inference URLs as needed
+# Required for auth: set JWT_SECRET, e.g.
+#   node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"
+# Set EMBEDDING_* / INFERENCE_* when you need AI features.
 
 # 3. Database
 docker compose up -d
 npm run migrate
 
-# 4. Run (separate terminals)
-npm run dev -w @astrolabe/api          # http://localhost:4000
+# 4. Dev processes (three terminals)
+npm run dev -w @astrolabe/api          # HTTP API  → http://localhost:4000
 npm run worker -w @astrolabe/api       # ingestion queue poller
-npm run dev -w @astrolabe/web          # http://localhost:3000
+npm run dev -w @astrolabe/web          # Next.js   → http://localhost:3000
 ```
 
-Optional local user:
+Health check:
+
+```bash
+curl -s http://localhost:4000/health
+# {"status":"ok"}
+```
+
+Optional seeded user:
 
 ```bash
 npm run seed:dev-user -w @astrolabe/api
 ```
 
-## Scripts (root)
+Open [http://localhost:3000](http://localhost:3000) (landing), [http://localhost:3000/inscription](http://localhost:3000/inscription), or [http://localhost:3000/login](http://localhost:3000/login).
+
+---
+
+## Environment variables
+
+Copy from [`.env.example`](.env.example). Summary:
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Postgres connection (default host port **5433**) |
+| `PORT` | API port (default `4000`) |
+| `WEB_ORIGIN` | Exact CORS origin for credentialed cookies (`http://localhost:3000`) |
+| `JWT_SECRET` | HS256 signing secret (**required**, fail-closed) |
+| `JWT_ISSUER` / `JWT_AUDIENCE` | Token claims |
+| `ACCESS_TOKEN_TTL` / `REFRESH_TOKEN_TTL` | Session lifetimes (`15m` / `30d` by default) |
+| `ARGON2_*` | Password hashing cost parameters |
+| `LOCKOUT_MAX_ATTEMPTS` / `LOCKOUT_WINDOW_MINUTES` | Brute-force lockout |
+| `EMBEDDING_API_URL` / `EMBEDDING_MODEL` / `EMBEDDING_MODEL_DIM` | Embedding provider |
+| `USE_EXTERNAL_AI` | Master switch for score + stream |
+| `INFERENCE_API_URL` / `INFERENCE_API_KEY` / `INFERENCE_MODEL_*` | Chat (+ optional judge) |
+| `RERANKER_API_URL` / `RERANK_ENABLED` / `FUSION_METHOD` | Retrieval rerank / fusion |
+| `UPLOAD_DIR` | Local upload storage for PDF/DOCX bytes |
+| `NEXT_PUBLIC_API_URL` | Browser → API base URL |
+
+Never commit `.env`. The Docker DB name/user/password remain `astrolab` (no *e*) by deliberate choice.
+
+---
+
+## Scripts
+
+### Root
 
 | Command | Purpose |
 | --- | --- |
-| `npm run build` | Build packages, then API and web |
+| `npm run build:packages` | Build shared packages |
+| `npm run build` | Packages + API + web |
 | `npm run typecheck` | Typecheck all workspaces |
-| `npm run test` | Run workspace tests |
-| `npm run migrate` | Apply `infra/migrations` via db-core |
+| `npm run test` | Vitest across workspaces |
+| `npm run migrate` | Apply `infra/migrations` (tracked in `schema_migrations`) |
 
-## Current scope (J2)
+### API (`@astrolabe/api`)
 
-**In place:** auth (signup/login/session/refresh/lockout), dashboard shell, public + auth pages, ingestion extractors + chunker, inference package, CI with an accessibility gate.
+| Command | Purpose |
+| --- | --- |
+| `npm run dev -w @astrolabe/api` | HTTP server with reload |
+| `npm run worker -w @astrolabe/api` | Ingestion worker with reload |
+| `npm run build -w @astrolabe/api` | Compile to `dist/` |
+| `npm run seed:dev-user -w @astrolabe/api` | Insert a local dev user |
 
-**Still stubbed or later:** full ingestion queue wiring, hybrid retrieval, streaming generation with citations, voice, billing, RGPD export/delete.
+### Web (`@astrolabe/web`)
+
+| Command | Purpose |
+| --- | --- |
+| `npm run dev -w @astrolabe/web` | Next.js dev server |
+| `npm run build -w @astrolabe/web` | Production build |
+| `npm run test -w @astrolabe/web` | Unit tests (Vitest) |
+| `npm run test:a11y -w @astrolabe/web` | Playwright + axe-core accessibility gate |
+
+---
+
+## API surface
+
+Base URL (dev): `http://localhost:4000`
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| `GET` | `/health` | Liveness |
+| `POST` | `/api/auth/signup` | Create account |
+| `POST` | `/api/auth/login` | Session cookies |
+| `POST` | `/api/auth/refresh` | Rotate refresh token |
+| `POST` | `/api/auth/logout` | Clear session |
+| `GET` | `/api/auth/me` | Current user (JWT) |
+| `GET` | `/api/auth/me/export` | RGPD export (**stub**) |
+| `DELETE` | `/api/auth/me` | Account delete (**stub**) |
+| `GET/POST/PATCH/DELETE` | `/api/conversations…` | Conversation CRUD |
+| `POST/GET/DELETE` | `/api/ingestion/documents…` | URL ingest, upload, list, get, delete |
+| `POST` | `/api/retrieval/search` | Hybrid search (**stubbed service**) |
+| `POST` | `/api/generation/chat` | Chat / streaming (**mostly stubbed**) |
+
+Auth for protected routes: JWT from session cookie, validated by `requireJwt`.
+
+---
+
+## Web routes
+
+| Route | Audience |
+| --- | --- |
+| `/` | Public landing (marketing) |
+| `/login` | Login (no dashboard chrome) |
+| `/inscription` | Signup (no dashboard chrome) |
+| `/chat`, `/chat/[…conversationId]` | Authenticated chat (empty state built; full chat later) |
+| `/sources`, `/sources/ajouter` | Document library / add source |
+| `/offre` | Offer / billing placeholder |
+| `/reglages` | Settings placeholder |
+
+Dashboard routes sit behind Next.js middleware that expects a session cookie.
+
+---
+
+## Data & security model
+
+- **Postgres 16 + pgvector** via `docker-compose.yml` (host port `5433`).
+- **Migrations** live under `infra/migrations/`, applied once by filename. **Never edit an already-applied migration** — add a new file.
+- **RLS** is enabled and forced on user-owned tables. Policies compare `owner_id` (or `user_id` on `private_embedding_cache`) to `current_setting('app.user_id', true)`. Missing scope fails closed.
+- **Passwords**: Argon2id. **Tokens**: HS256 JWT access + rotating refresh (see project ADRs in local `docs/`).
+- **CORS**: exact `WEB_ORIGIN` + `credentials: true` so cookies work across `:3000` / `:4000`.
+
+---
+
+## Inference
+
+All provider I/O goes through `packages/inference`:
+
+| Method | Behaviour |
+| --- | --- |
+| `embed` | Fail-closed (throws) |
+| `score` | Rerank / LLM-judge — fail-open (`null` on error) |
+| `stream` | Chat generation — yields `{ kind: 'error' }` instead of throwing mid-stream |
+| `transcribe` | Voice stub (milestone J4) |
+
+Do not add a second HTTP client for embeddings, chat, or reranking elsewhere.
+
+---
+
+## CI
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on pushes to `main` and on pull requests:
+
+1. `npm ci`
+2. Build shared packages
+3. Monorepo typecheck
+4. Build API + web
+5. Unit tests (Vitest)
+6. Playwright + **axe-core** accessibility audit on key pages
+
+---
+
+## Project status & milestones
+
+### Current (J2 — socle)
+
+**Real:** auth end-to-end, dashboard shell, `/` / `/login` / `/inscription`, chat empty state, ingestion extractors + chunker, `packages/inference`, CI with a11y gate.
+
+**Stubbed (`notImplemented`):** full `processJob` wiring, retrieval search, generation streaming, RGPD export/delete, embedding caches / queue internals.
+
+**Not started:** `voice/`, `billing/`, `privacy/` modules; several MPD tables (`subscriptions`, `consent_log`, `voice_transcripts`, …).
+
+### Calendar
+
+| Milestone | Target | Focus |
+| --- | --- | --- |
+| **J2** | 2026-09-14 | Socle, migrations, RLS, auth, CI |
+| **J3** | 2026-10-05 | Ingestion (4 formats), hybrid search, eval, privacy |
+| **J4** | 2026-10-26 | Streaming generation, citations, voice, quotas |
+| **J5** | 2026-11-16 | Frontend polish, public site, test-mode payment, audits |
+
+---
+
+## Development conventions
+
+- **Typed stubs, not TODOs** — unfinished logic throws `notImplemented('Class.method')`.
+- **Fail-open vs fail-closed** is per-operation (embeddings/auth fail closed; rerank/decomposition may degrade).
+- **Chunk sizing uses character budgets**, not tokenizer token counts (open-weight providers ≠ tiktoken).
+- **CSS**: Tailwind v4, CSS-first tokens in `apps/web/app/tokens.css` (charte visuelle).
+- **Module boundaries**: import sibling modules only via their `index.ts`.
+
+---
 
 ## License
 
-Private thesis project — not licensed for redistribution.
+Private thesis project — not licensed for public redistribution.
